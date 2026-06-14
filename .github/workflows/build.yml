@@ -32,6 +32,10 @@ on:
         required: false
         type: boolean
         default: false
+      create-updater-artifacts:
+        required: false
+        type: boolean
+        default: false
       repository:
         required: false
         type: string
@@ -44,14 +48,13 @@ on:
         type: boolean
         default: false
 
-env:
-  TSC_VERSION: "0.9.0"
-
 jobs:
   build:
     permissions:
       contents: write
+
     runs-on: ${{ inputs.platform }}
+
     steps:
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
@@ -94,7 +97,6 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ contains(inputs.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
@@ -140,9 +142,6 @@ jobs:
           version: 1.4.309.0
           cache: true
 
-      # humbletim/install-vulkan-sdk@v1.2 cannot target Windows ARM64 yet.
-      # Download prebuilt binaries (Bin) + build headers/libs from source.
-      # See https://github.com/humbletim/install-vulkan-sdk/pull/22 for prebuilt ARM64 support progress.
       - name: Prepare Vulkan SDK env (Windows ARM64)
         if: contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64')
         shell: pwsh
@@ -166,10 +165,13 @@ jobs:
         run: |
           $sdkDir = $env:VULKAN_SDK
           $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+
           Write-Host "Extracting binaries to $sdkDir"
           & $sevenZip x "./vulkan_sdk_arm.exe" "-o$sdkDir" -aoa
+
           $binPath = Join-Path $sdkDir "Bin"
           Add-Content -Path $env:GITHUB_PATH -Value $binPath
+
           Write-Host "Verifying glslc..."
           & (Join-Path $binPath "glslc.exe") --version
 
@@ -182,16 +184,16 @@ jobs:
           vulkan-use-cache: true
 
       - name: Cache trusted-signing-cli
-        if: contains(inputs.platform, 'windows') && inputs.sign-binaries
+        if: ${{ contains(inputs.platform, 'windows') && inputs.sign-binaries == true }}
         id: cache-tsc
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/trusted-signing-cli*
-          key: trusted-signing-cli-${{ env.TSC_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          key: trusted-signing-cli-0.9.0-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install trusted-signing-cli
-        if: contains(inputs.platform, 'windows') && inputs.sign-binaries && steps.cache-tsc.outputs.cache-hit != 'true'
-        run: cargo install trusted-signing-cli@${{ env.TSC_VERSION }}
+        if: ${{ contains(inputs.platform, 'windows') && inputs.sign-binaries == true && steps.cache-tsc.outputs.cache-hit != 'true' }}
+        run: cargo install trusted-signing-cli@0.9.0
 
       - name: Prepare Vulkan SDK for Ubuntu 24.04
         if: contains(inputs.platform, 'ubuntu-24.04') && !contains(inputs.platform, 'arm')
@@ -236,8 +238,44 @@ jobs:
         if: ${{ inputs.target != '' && !contains(inputs.target, 'x86_64-unknown-linux-gnu') && !contains(inputs.target, 'aarch64-unknown-linux-gnu') && !contains(inputs.target, 'x86_64-pc-windows-msvc') }}
         run: rustup target add ${{ inputs.target }}
 
+      - name: Validate signing configuration
+        if: ${{ inputs.sign-binaries == true || inputs.create-updater-artifacts == true }}
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ contains(inputs.platform, 'macos') && inputs.sign-binaries == true && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ contains(inputs.platform, 'macos') && inputs.sign-binaries == true && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          KEYCHAIN_PASSWORD: ${{ contains(inputs.platform, 'macos') && inputs.sign-binaries == true && secrets.KEYCHAIN_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.create-updater-artifacts == true && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          AZURE_CLIENT_ID: ${{ contains(inputs.platform, 'windows') && inputs.sign-binaries == true && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ contains(inputs.platform, 'windows') && inputs.sign-binaries == true && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_TENANT_ID: ${{ contains(inputs.platform, 'windows') && inputs.sign-binaries == true && secrets.AZURE_TENANT_ID || '' }}
+        run: |
+          missing=()
+
+          if [[ "${{ inputs.create-updater-artifacts }}" == "true" && -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            missing+=("TAURI_SIGNING_PRIVATE_KEY")
+          fi
+
+          if [[ "${{ contains(inputs.platform, 'windows') }}" == "true" && "${{ inputs.sign-binaries }}" == "true" ]]; then
+            [[ -n "${AZURE_CLIENT_ID}" ]] || missing+=("AZURE_CLIENT_ID")
+            [[ -n "${AZURE_CLIENT_SECRET}" ]] || missing+=("AZURE_CLIENT_SECRET")
+            [[ -n "${AZURE_TENANT_ID}" ]] || missing+=("AZURE_TENANT_ID")
+          fi
+
+          if [[ "${{ contains(inputs.platform, 'macos') }}" == "true" && "${{ inputs.sign-binaries }}" == "true" ]]; then
+            [[ -n "${APPLE_CERTIFICATE}" ]] || missing+=("APPLE_CERTIFICATE")
+            [[ -n "${APPLE_CERTIFICATE_PASSWORD}" ]] || missing+=("APPLE_CERTIFICATE_PASSWORD")
+            [[ -n "${KEYCHAIN_PASSWORD}" ]] || missing+=("KEYCHAIN_PASSWORD")
+          fi
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required signing secret(s):\n'
+            printf ' - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
       - name: import Apple Developer Certificate
-        if: contains(inputs.platform, 'macos') && inputs.sign-binaries
+        if: ${{ contains(inputs.platform, 'macos') && inputs.sign-binaries == true }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -253,7 +291,7 @@ jobs:
           security find-identity -v -p codesigning build.keychain
 
       - name: verify certificate
-        if: contains(inputs.platform, 'macos') && inputs.sign-binaries
+        if: ${{ contains(inputs.platform, 'macos') && inputs.sign-binaries == true }}
         run: |
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
@@ -268,13 +306,13 @@ jobs:
           platform="${{ inputs.platform }}"
           replacement="$(echo ${platform} | sed -E 's/-latest//')"
           patched_platform=$(echo '${{ inputs.asset-name-pattern }}' | sed -E "s/\[platform\]/${replacement}/")
+
           if [[ -n "${{ inputs.asset-prefix }}" ]]; then
             patched_platform="${{ inputs.asset-prefix }}_${patched_platform}"
           fi
+
           echo "platform=${patched_platform}" >> $GITHUB_OUTPUT
 
-      # whisper-rs-sys cmake builds create paths that exceed Windows MAX_PATH
-      # (260 chars). Shorten the target dir to keep paths under the limit.
       - name: Shorten build path (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -284,9 +322,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
           echo "CARGO_TARGET_DIR=$targetDir" >> $env:GITHUB_ENV
 
-      # ggml requires clang for ARM. The VS generator determines the compiler
-      # via the toolset (-T flag) which can't be overridden from env vars.
-      # Use Ninja + clang-cl instead, which respects CMAKE_C_COMPILER.
       - name: Configure cmake for ARM64 (Windows)
         if: contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64')
         shell: pwsh
@@ -308,7 +343,7 @@ jobs:
           ORT_DIR="$(pwd)/onnxruntime-osx-x86_64-${ORT_VERSION}"
           echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> $GITHUB_ENV
           echo "ORT_PREFER_DYNAMIC_LINK=1" >> $GITHUB_ENV
-          # Bundle the versioned dylib (matches the install name @rpath/libonnxruntime.1.24.2.dylib)
+
           jq --arg lib "$ORT_DIR/lib/libonnxruntime.${ORT_VERSION}.dylib" \
             '.bundle.macOS.frameworks = [$lib]' \
             src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
@@ -323,40 +358,75 @@ jobs:
           ORT_DIR="$(pwd)/onnxruntime-linux-x86_64-${ORT_VERSION}"
           echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> $GITHUB_ENV
           echo "ORT_PREFER_DYNAMIC_LINK=1" >> $GITHUB_ENV
-          # Resolve symlinks so the deb bundler gets real files (not broken symlinks)
+
           for f in "$ORT_DIR"/lib/libonnxruntime.so*; do
             if [ -L "$f" ]; then
               cp -L "$f" "$f.real" && mv "$f.real" "$f"
             fi
           done
-          # Add the shared libs to the deb package under /usr/lib
-          # deb.files key = destination in package, value = source on disk
+
           jq --arg so "$ORT_DIR/lib/libonnxruntime.so" \
-             --arg so1 "$ORT_DIR/lib/libonnxruntime.so.1" \
-             --arg sov "$ORT_DIR/lib/libonnxruntime.so.1.24.2" \
+            --arg so1 "$ORT_DIR/lib/libonnxruntime.so.1" \
+            --arg sov "$ORT_DIR/lib/libonnxruntime.so.1.24.2" \
             '.bundle.linux.deb.files["/usr/lib/libonnxruntime.so"] = $so | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1"] = $so1 | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1.24.2"] = $sov' \
             src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
+      - name: Configure signing
+        if: ${{ inputs.sign-binaries == true || inputs.create-updater-artifacts == true }}
+        shell: bash
+        run: |
+          if [[ "${{ inputs.create-updater-artifacts }}" == "true" ]]; then
+            jq '.bundle.createUpdaterArtifacts = true' src-tauri/tauri.conf.json > tmp.json
+            mv tmp.json src-tauri/tauri.conf.json
+          fi
+
+          if [[ "${{ inputs.sign-binaries }}" == "true" && "${{ contains(inputs.platform, 'windows') }}" == "true" ]]; then
+            jq '.bundle.windows.signCommand = "trusted-signing-cli -e https://eus.codesigning.azure.net/ -a CJ-Signing -c cjpais-dev -d Handy %1"' src-tauri/tauri.conf.json > tmp.json
+            mv tmp.json src-tauri/tauri.conf.json
+          fi
+
+          if [[ "${{ inputs.sign-binaries }}" == "true" && "${{ contains(inputs.platform, 'macos') }}" == "true" ]]; then
+            jq '.bundle.macOS.hardenedRuntime = true | .bundle.macOS.entitlements = "Entitlements.plist"' src-tauri/tauri.conf.json > tmp.json
+            mv tmp.json src-tauri/tauri.conf.json
+          fi
+
+      - name: Validate Windows signing tools
+        if: ${{ contains(inputs.platform, 'windows') && inputs.sign-binaries == true }}
+        shell: pwsh
+        run: |
+          trusted-signing-cli --help | Out-Null
+          az --version | Out-Null
+          dotnet --info | Out-Null
+
+          $kitsRoot = Get-ItemPropertyValue `
+            -Path "HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots" `
+            -Name "KitsRoot10"
+          $signTool = Get-ChildItem -Path (Join-Path $kitsRoot "bin") -Filter "signtool.exe" -Recurse |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if ($null -eq $signTool) {
+            throw "signtool.exe was not found in the installed Windows SDK."
+          }
+
+          Write-Host "Found signtool at $($signTool.FullName)"
 
       - name: Build with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID: ${{ inputs.sign-binaries && secrets.APPLE_ID || '' }}
-          APPLE_ID_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_ID_PASSWORD || '' }}
-          APPLE_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ inputs.sign-binaries && secrets.APPLE_TEAM_ID || '' }}
-          APPLE_CERTIFICATE: ${{ inputs.sign-binaries && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ inputs.sign-binaries && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ inputs.sign-binaries && env.CERT_ID || '' }}
-          AZURE_CLIENT_ID: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_ID || '' }}
-          AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_SECRET || '' }}
-          AZURE_TENANT_ID: ${{ inputs.sign-binaries && secrets.AZURE_TENANT_ID || '' }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
-          # Disable -march=native and all SIMD instruction sets above SSE4.2 for
-          # x86_64 builds. Without this, CPUs lacking AVX/FMA (e.g. Celeron N2920,
-          # FX-8350) crash with SIGILL. The Vulkan backend handles heavy compute
-          # so disabling these has negligible performance impact.
+          APPLE_ID: ${{ inputs.sign-binaries == true && secrets.APPLE_ID || '' }}
+          APPLE_ID_PASSWORD: ${{ inputs.sign-binaries == true && secrets.APPLE_ID_PASSWORD || '' }}
+          APPLE_PASSWORD: ${{ inputs.sign-binaries == true && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.sign-binaries == true && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_CERTIFICATE: ${{ inputs.sign-binaries == true && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ inputs.sign-binaries == true && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ inputs.sign-binaries == true && env.CERT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ inputs.sign-binaries == true && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries == true && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_TENANT_ID: ${{ inputs.sign-binaries == true && secrets.AZURE_TENANT_ID || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.create-updater-artifacts == true && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.create-updater-artifacts == true && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           GGML_NATIVE: ${{ !contains(inputs.platform, 'macos') && !contains(inputs.platform, 'arm') && !contains(inputs.target, 'aarch64') && 'OFF' || '' }}
           GGML_AVX: ${{ !contains(inputs.platform, 'macos') && !contains(inputs.platform, 'arm') && !contains(inputs.target, 'aarch64') && 'OFF' || '' }}
           GGML_AVX2: ${{ !contains(inputs.platform, 'macos') && !contains(inputs.platform, 'arm') && !contains(inputs.target, 'aarch64') && 'OFF' || '' }}
@@ -374,12 +444,14 @@ jobs:
         shell: bash
         run: |
           APP=$(find src-tauri/target -name "*.app" -type d | head -1)
+
           echo "=== Frameworks contents ==="
           ls -la "$APP/Contents/Frameworks/" | grep onnx || true
+
           echo "=== Binary linked libs ==="
           otool -L "$APP/Contents/MacOS/handy" | grep onnx || true
+
           echo "=== Checking all @rpath deps are satisfied ==="
-          # Extract every @rpath lib the binary needs
           otool -L "$APP/Contents/MacOS/handy" | grep '@rpath/' | awk '{print $1}' | while read dep; do
             libname=$(basename "$dep")
             if [ ! -f "$APP/Contents/Frameworks/$libname" ]; then
@@ -409,34 +481,26 @@ jobs:
       - name: Remove libwayland-client.so from AppImage
         if: contains(inputs.platform, 'ubuntu')
         run: |
-          # Find the AppImage file
           APPIMAGE_PATH=$(find src-tauri/target/${{ steps.build-profile.outputs.profile }}/bundle/appimage -name "*.AppImage" | head -1)
 
           if [ -n "$APPIMAGE_PATH" ]; then
             echo "Processing AppImage: $APPIMAGE_PATH"
-
-            # Make AppImage executable
             chmod +x "$APPIMAGE_PATH"
 
-            # Extract AppImage
             cd "$(dirname "$APPIMAGE_PATH")"
             APPIMAGE_NAME=$(basename "$APPIMAGE_PATH")
 
-            # Extract using the AppImage itself
             "./$APPIMAGE_NAME" --appimage-extract
 
-            # Remove libwayland-client.so files
             echo "Removing libwayland-client.so files..."
             find squashfs-root -name "libwayland-client.so*" -type f -delete
 
-            # List what was removed for verification
             echo "Files remaining in lib directories:"
             find squashfs-root -name "lib*" -type d | head -5 | while read dir; do
               echo "Contents of $dir:"
-              ls "$dir" | grep -E "(wayland|fuse)" || echo "  No wayland/fuse libraries found"
+              ls "$dir" | grep -E "(wayland|fuse)" || echo " No wayland/fuse libraries found"
             done
 
-            # Detect architecture and get appropriate appimagetool
             if [[ "$(uname -m)" == "aarch64" ]]; then
               APPIMAGETOOL_ARCH="aarch64"
             else
@@ -446,12 +510,9 @@ jobs:
             wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
             chmod +x "appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
 
-            # Repackage AppImage with no-appstream to avoid warnings
             ARCH="${APPIMAGETOOL_ARCH}" "./appimagetool-${APPIMAGETOOL_ARCH}.AppImage" --no-appstream squashfs-root "$APPIMAGE_NAME"
 
-            # Clean up
             rm -rf squashfs-root "appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
-
             echo "libwayland-client.so removed from AppImage successfully"
           else
             echo "No AppImage found to process"

@@ -152,12 +152,6 @@ pub fn open_microphone_privacy_settings() -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub fn update_microphone_mode(app: AppHandle, always_on: bool) -> Result<(), String> {
-    // Update settings
-    let mut settings = get_settings(&app);
-    settings.always_on_microphone = always_on;
-    write_settings(&app, settings);
-
-    // Update the audio manager mode
     let rm = app.state::<Arc<AudioRecordingManager>>();
     let new_mode = if always_on {
         MicrophoneMode::AlwaysOn
@@ -166,7 +160,13 @@ pub fn update_microphone_mode(app: AppHandle, always_on: bool) -> Result<(), Str
     };
 
     rm.update_mode(new_mode)
-        .map_err(|e| format!("Failed to update microphone mode: {}", e))
+        .map_err(|e| format!("Failed to update microphone mode: {}", e))?;
+
+    let mut settings = get_settings(&app);
+    settings.always_on_microphone = always_on;
+    write_settings(&app, settings);
+
+    Ok(())
 }
 
 #[tauri::command]
