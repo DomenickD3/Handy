@@ -253,7 +253,11 @@
       },
       "handsFree": {
         "label": "Hands-Free Always-On Capture",
-        "description": "Keeps the mic always listening and logs every spoken phrase to history. Only phrases that start with your wake word (\"dude\") are pasted at the cursor; everything else is captured to history but never typed. No shortcut press needed."
+        "description": "Keeps the mic always listening and logs every spoken phrase to history. Only phrases that start with your wake word are pasted at the cursor; everything else is captured to history but never typed. No shortcut press needed."
+      },
+      "wakeWord": {
+        "label": "Wake Word",
+        "description": "Phrase that must start a hands-free utterance before it is pasted."
       },
       "lazyStreamClose": {
         "label": "Keep Mic Open Between Transcriptions",

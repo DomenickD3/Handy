@@ -21,6 +21,7 @@ import { KeyboardImplementationSelector } from "../debug/KeyboardImplementationS
 import { AccelerationSelector } from "../AccelerationSelector";
 import { LazyStreamClose } from "../LazyStreamClose";
 import { HandsFreeToggle } from "../HandsFreeToggle";
+import { WakeWordInput } from "../WakeWordInput";
 
 export const AdvancedSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -61,6 +62,7 @@ export const AdvancedSettings: React.FC = () => {
       {experimentalEnabled && (
         <SettingsGroup title={t("settings.advanced.groups.experimental")}>
           <HandsFreeToggle descriptionMode="tooltip" grouped={true} />
+          <WakeWordInput grouped={true} />
           <PostProcessingToggle descriptionMode="tooltip" grouped={true} />
           <KeyboardImplementationSelector
             descriptionMode="tooltip"

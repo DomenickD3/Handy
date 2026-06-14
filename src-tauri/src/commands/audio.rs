@@ -178,6 +178,21 @@ pub fn get_microphone_mode(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_wake_word_setting(app: AppHandle, wake_word: String) -> Result<(), String> {
+    let wake_word = wake_word.trim();
+    if wake_word.is_empty() {
+        return Err("Wake word cannot be empty".to_string());
+    }
+
+    let mut settings = get_settings(&app);
+    settings.wake_word = wake_word.to_string();
+    write_settings(&app, settings);
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn get_available_microphones() -> Result<Vec<AudioDevice>, String> {
     let devices =
         list_input_devices().map_err(|e| format!("Failed to list audio devices: {}", e))?;
