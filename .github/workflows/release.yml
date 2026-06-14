@@ -1,6 +1,18 @@
 name: "Release"
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      sign-binaries:
+        description: "Sign platform binaries. Requires platform signing secrets."
+        required: false
+        type: boolean
+        default: false
+      create-updater-artifacts:
+        description: "Create Tauri updater artifacts. Requires TAURI_SIGNING_PRIVATE_KEY."
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   create-release:
@@ -76,6 +88,6 @@ jobs:
       asset-prefix: "handy"
       upload-artifacts: false
       release-id: ${{ needs.create-release.outputs.release-id }}
-      sign-binaries: true
-      create-updater-artifacts: true
+      sign-binaries: ${{ inputs.sign-binaries }}
+      create-updater-artifacts: ${{ inputs.create-updater-artifacts }}
     secrets: inherit
