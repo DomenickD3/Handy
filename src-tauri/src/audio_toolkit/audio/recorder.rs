@@ -196,10 +196,19 @@ impl AudioRecorder {
     }
 
     pub fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(tx) = &self.cmd_tx {
-            tx.send(Cmd::Start)?;
-        }
+        let tx = self.cmd_tx.as_ref().ok_or_else(|| {
+            Error::new(
+                std::io::ErrorKind::NotConnected,
+                "Audio recorder is not open",
+            )
+        })?;
+
+        tx.send(Cmd::Start)?;
         Ok(())
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.cmd_tx.is_some() && self.worker_handle.is_some()
     }
 
     pub fn stop(&self) -> Result<Vec<f32>, Box<dyn std::error::Error>> {

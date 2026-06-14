@@ -284,9 +284,22 @@ impl AudioRecordingManager {
 
     pub fn start_microphone_stream(&self) -> Result<(), anyhow::Error> {
         let mut open_flag = self.is_open.lock().unwrap();
-        if *open_flag {
+        let recorder_is_ready = self
+            .recorder
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|rec| rec.is_open())
+            .unwrap_or(false);
+
+        if *open_flag && recorder_is_ready {
             debug!("Microphone stream already active");
             return Ok(());
+        }
+
+        if *open_flag && !recorder_is_ready {
+            log::warn!("Microphone stream was marked open but recorder was unavailable; reopening");
+            *open_flag = false;
         }
 
         let start_time = Instant::now();
@@ -387,9 +400,22 @@ impl AudioRecordingManager {
         let mut state = self.state.lock().unwrap();
 
         if let RecordingState::Idle = *state {
-            // Ensure microphone is open in on-demand mode
-            if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
-                // Cancel any pending lazy close
+            let recorder_is_ready = self
+                .recorder
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|rec| rec.is_open())
+                .unwrap_or(false);
+
+            // Ensure the microphone stream is open before starting. On-demand
+            // normally opens here, but always-on can also need recovery if the
+            // worker was never initialized or was closed by the OS/audio host.
+            if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand)
+                || !*self.is_open.lock().unwrap()
+                || !recorder_is_ready
+            {
+                // Cancel any pending lazy close before opening/reopening.
                 self.close_generation.fetch_add(1, Ordering::SeqCst);
                 if let Err(e) = self.start_microphone_stream() {
                     let msg = format!("{e}");
@@ -399,13 +425,20 @@ impl AudioRecordingManager {
             }
 
             if let Some(rec) = self.recorder.lock().unwrap().as_ref() {
-                if rec.start().is_ok() {
-                    *self.is_recording.lock().unwrap() = true;
-                    *state = RecordingState::Recording {
-                        binding_id: binding_id.to_string(),
-                    };
-                    debug!("Recording started for binding {binding_id}");
-                    return Ok(());
+                match rec.start() {
+                    Ok(()) => {
+                        *self.is_recording.lock().unwrap() = true;
+                        *state = RecordingState::Recording {
+                            binding_id: binding_id.to_string(),
+                        };
+                        debug!("Recording started for binding {binding_id}");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        let msg = format!("Failed to start recorder: {e}");
+                        error!("{msg}");
+                        return Err(msg);
+                    }
                 }
             }
             Err("Recorder not available".to_string())
