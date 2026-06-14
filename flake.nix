@@ -215,6 +215,7 @@
               # Rust toolchain
               rustc
               cargo
+              rustfmt
               rust-analyzer
               clippy
               # Frontend
