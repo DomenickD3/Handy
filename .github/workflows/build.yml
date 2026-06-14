@@ -296,7 +296,24 @@ jobs:
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
           echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
           echo "Certificate imported."
+
+      - name: Export Apple signing environment
+        if: ${{ contains(inputs.platform, 'macos') && inputs.sign-binaries == true }}
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          {
+            echo "APPLE_ID=${APPLE_ID}"
+            echo "APPLE_ID_PASSWORD=${APPLE_ID_PASSWORD}"
+            echo "APPLE_PASSWORD=${APPLE_PASSWORD}"
+            echo "APPLE_TEAM_ID=${APPLE_TEAM_ID}"
+          } >> "$GITHUB_ENV"
 
       - name: Patch asset name pattern
         id: patch-release-name
@@ -415,11 +432,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID: ${{ inputs.sign-binaries == true && secrets.APPLE_ID || '' }}
-          APPLE_ID_PASSWORD: ${{ inputs.sign-binaries == true && secrets.APPLE_ID_PASSWORD || '' }}
-          APPLE_PASSWORD: ${{ inputs.sign-binaries == true && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ inputs.sign-binaries == true && secrets.APPLE_TEAM_ID || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ inputs.sign-binaries == true && env.CERT_ID || '' }}
           AZURE_CLIENT_ID: ${{ inputs.sign-binaries == true && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries == true && secrets.AZURE_CLIENT_SECRET || '' }}
           AZURE_TENANT_ID: ${{ inputs.sign-binaries == true && secrets.AZURE_TENANT_ID || '' }}
