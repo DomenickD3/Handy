@@ -251,6 +251,14 @@
         "label": "實驗性功能",
         "description": "啟用仍在開發中的實驗性功能"
       },
+      "handsFree": {
+        "label": "Hands-Free Always-On Capture",
+        "description": "Keeps the mic always listening and logs every spoken phrase to history. Only phrases that start with your wake word are pasted at the cursor; everything else is captured to history but never typed. No shortcut press needed."
+      },
+      "wakeWord": {
+        "label": "Wake Word",
+        "description": "Phrase that must start a hands-free utterance before it is pasted."
+      },
       "lazyStreamClose": {
         "label": "在轉錄之間保持麥克風開啟",
         "description": "錄音停止後保持麥克風串流開啟30秒，減少連續轉錄時的延遲。啟用時可能會降低藍牙音訊品質。"

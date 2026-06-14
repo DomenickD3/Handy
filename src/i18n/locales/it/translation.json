@@ -251,6 +251,14 @@
         "label": "Funzionalità Sperimentali",
         "description": "Abilita le funzionalità sperimentali ancora in fase di sviluppo."
       },
+      "handsFree": {
+        "label": "Hands-Free Always-On Capture",
+        "description": "Keeps the mic always listening and logs every spoken phrase to history. Only phrases that start with your wake word are pasted at the cursor; everything else is captured to history but never typed. No shortcut press needed."
+      },
+      "wakeWord": {
+        "label": "Wake Word",
+        "description": "Phrase that must start a hands-free utterance before it is pasted."
+      },
       "lazyStreamClose": {
         "label": "Mantieni il microfono aperto tra le trascrizioni",
         "description": "Mantiene lo stream del microfono aperto per 30 secondi dopo l'arresto della registrazione, riducendo la latenza per trascrizioni consecutive. Potrebbe degradare la qualità audio Bluetooth."

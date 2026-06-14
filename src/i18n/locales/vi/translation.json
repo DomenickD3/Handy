@@ -251,6 +251,14 @@
         "label": "Tính năng thử nghiệm",
         "description": "Bật các tính năng thử nghiệm đang trong quá trình phát triển."
       },
+      "handsFree": {
+        "label": "Hands-Free Always-On Capture",
+        "description": "Keeps the mic always listening and logs every spoken phrase to history. Only phrases that start with your wake word are pasted at the cursor; everything else is captured to history but never typed. No shortcut press needed."
+      },
+      "wakeWord": {
+        "label": "Wake Word",
+        "description": "Phrase that must start a hands-free utterance before it is pasted."
+      },
       "lazyStreamClose": {
         "label": "Giữ micro mở giữa các lần phiên âm",
         "description": "Giữ luồng micro mở trong 30 giây sau khi dừng ghi âm, giảm độ trễ khi phiên âm liên tiếp. Có thể làm giảm chất lượng âm thanh Bluetooth khi đang hoạt động."

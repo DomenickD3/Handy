@@ -251,6 +251,14 @@
         "label": "実験的機能",
         "description": "まだ開発中の実験的機能を有効にします。"
       },
+      "handsFree": {
+        "label": "Hands-Free Always-On Capture",
+        "description": "Keeps the mic always listening and logs every spoken phrase to history. Only phrases that start with your wake word are pasted at the cursor; everything else is captured to history but never typed. No shortcut press needed."
+      },
+      "wakeWord": {
+        "label": "Wake Word",
+        "description": "Phrase that must start a hands-free utterance before it is pasted."
+      },
       "lazyStreamClose": {
         "label": "文字起こし間でマイクを開いたままにする",
         "description": "録音停止後30秒間マイクストリームを開いたままにし、連続した文字起こしの遅延を軽減します。Bluetooth音声品質に影響する場合があります。"
