@@ -494,15 +494,15 @@ pub(crate) async fn route_hands_free_utterance(
 
     let app_clone = app.clone();
     let paste_time = Instant::now();
-    if let Err(e) = app.run_on_main_thread(move || {
-        match utils::paste(final_text, app_clone.clone()) {
+    if let Err(e) =
+        app.run_on_main_thread(move || match utils::paste(final_text, app_clone.clone()) {
             Ok(()) => debug!("Hands-free: text pasted in {:?}", paste_time.elapsed()),
             Err(e) => {
                 error!("Hands-free: failed to paste: {}", e);
                 let _ = app_clone.emit("paste-error", ());
             }
-        }
-    }) {
+        })
+    {
         error!("Hands-free: failed to run paste on main thread: {:?}", e);
     }
 }
@@ -843,10 +843,7 @@ mod tests {
             strip_wake_word("dude, send it", "dude").as_deref(),
             Some("send it")
         );
-        assert_eq!(
-            strip_wake_word("dude... go", "dude").as_deref(),
-            Some("go")
-        );
+        assert_eq!(strip_wake_word("dude... go", "dude").as_deref(), Some("go"));
     }
 
     #[test]

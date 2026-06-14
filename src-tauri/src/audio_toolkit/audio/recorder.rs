@@ -386,7 +386,7 @@ pub fn is_no_input_device_error(error_message: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_microphone_access_denied, is_no_input_device_error};
+    use super::{is_microphone_access_denied, is_no_input_device_error, AudioRecorder};
 
     #[test]
     fn detects_access_is_denied() {
@@ -424,6 +424,18 @@ mod tests {
     fn does_not_match_other_errors_for_no_device() {
         assert!(!is_no_input_device_error("permission denied"));
         assert!(!is_no_input_device_error("device not found"));
+    }
+
+    #[test]
+    fn unopened_recorder_is_not_open_and_cannot_start() {
+        let recorder = AudioRecorder::new().expect("recorder should be created");
+
+        assert!(!recorder.is_open());
+        let error = recorder
+            .start()
+            .expect_err("starting an unopened recorder should fail");
+
+        assert_eq!(error.to_string(), "Audio recorder is not open");
     }
 }
 
@@ -546,13 +558,7 @@ fn run_consumer(
                         match sample_rx.recv_timeout(Duration::from_secs(2)) {
                             Ok(AudioChunk::Samples(remaining)) => {
                                 frame_resampler.push(&remaining, &mut |frame: &[f32]| {
-                                    handle_frame(
-                                        frame,
-                                        true,
-                                        &vad,
-                                        &mut processed_samples,
-                                        &None,
-                                    )
+                                    handle_frame(frame, true, &vad, &mut processed_samples, &None)
                                 });
                             }
                             Ok(AudioChunk::EndOfStream) => break,

@@ -200,7 +200,10 @@ impl Default for HandsFreeManager {
 /// dedicated worker thread, so it may block on transcription.
 fn process_utterance(app: &AppHandle, samples: Vec<f32>) {
     let _ = FRAME_SAMPLES; // documented frame size; kept for clarity.
-    debug!("Hands-free: processing utterance ({} samples)", samples.len());
+    debug!(
+        "Hands-free: processing utterance ({} samples)",
+        samples.len()
+    );
 
     let Some(tm) = app.try_state::<Arc<TranscriptionManager>>() else {
         error!("Hands-free: TranscriptionManager unavailable");
@@ -212,7 +215,10 @@ fn process_utterance(app: &AppHandle, samples: Vec<f32>) {
     };
 
     // Persist the WAV so a history row can reference it (capture-all).
-    let file_name = format!("handy-handsfree-{}.wav", chrono::Utc::now().timestamp_millis());
+    let file_name = format!(
+        "handy-handsfree-{}.wav",
+        chrono::Utc::now().timestamp_millis()
+    );
     let wav_path = hm.recordings_dir().join(&file_name);
     let sample_count = samples.len();
     let wav_saved = match crate::audio_toolkit::save_wav_file(&wav_path, &samples) {
